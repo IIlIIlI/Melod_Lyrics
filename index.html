@@ -19,7 +19,7 @@ if(t.syncedLyrics){
     const started=Date.now();
     let previousActive=-1;
     function updateLyrics(){
-      if(!document.body.contains(lyricsBox))return;
+
       const seconds=(Date.now()-started)/1000;
       document.getElementById("status").textContent="⏱ 가사 시간: "+seconds.toFixed(1)+"초";
       let active=0;
