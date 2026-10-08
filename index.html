@@ -21,6 +21,7 @@ if(t.syncedLyrics){
     function updateLyrics(){
       if(!document.body.contains(lyricsBox))return;
       const seconds=(Date.now()-started)/1000;
+      document.getElementById("status").textContent="⏱ 가사 시간: "+seconds.toFixed(1)+"초";
       let active=0;
       lines.forEach((line,i)=>{if(seconds>=line.time)active=i;});
       const elements=lyricsBox.querySelectorAll(".sync-line");
@@ -38,4 +39,4 @@ if(t.syncedLyrics){
   }
 }else{
   lyricsBox.textContent=t.plainLyrics||"가사가 없습니다.";
-}status.textContent="";song.style.display="block"}catch(e){status.textContent="";error.textContent="❌ 가사를 불러오지 못했습니다."}}const p=new URLSearchParams(location.search);const q=[p.get("artist"),p.get("title")].filter(Boolean).join(" ");if(q){document.getElementById("q").value=q;searchLyrics();}</script></body></html>
+}song.style.display="block"}catch(e){status.textContent="";error.textContent="❌ 가사를 불러오지 못했습니다."}}const p=new URLSearchParams(location.search);const q=[p.get("artist"),p.get("title")].filter(Boolean).join(" ");if(q){document.getElementById("q").value=q;searchLyrics();}</script></body></html>
