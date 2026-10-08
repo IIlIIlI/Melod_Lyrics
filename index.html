@@ -17,6 +17,7 @@ if(t.syncedLyrics){
       lyricsBox.appendChild(div);
     });
     const started=Date.now();
+    let previousActive=-1;
     function updateLyrics(){
       if(!lyricsBox.isConnected)return;
       const seconds=(Date.now()-started)/1000;
@@ -24,7 +25,10 @@ if(t.syncedLyrics){
       lines.forEach((line,i)=>{if(seconds>=line.time)active=i;});
       const elements=lyricsBox.querySelectorAll(".sync-line");
       elements.forEach((el,i)=>el.classList.toggle("active",i===active));
-      elements[active]?.scrollIntoView({behavior:"smooth",block:"center"});
+      if(active!==previousActive){
+        elements[active]?.scrollIntoView({behavior:"smooth",block:"center"});
+        previousActive=active;
+      }
       requestAnimationFrame(updateLyrics);
     }
     requestAnimationFrame(updateLyrics);
