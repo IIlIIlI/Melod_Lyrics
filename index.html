@@ -19,7 +19,7 @@ if(t.syncedLyrics){
     const started=Date.now();
     let previousActive=-1;
     function updateLyrics(){
-      if(!lyricsBox.isConnected)return;
+      if(!document.body.contains(lyricsBox))return;
       const seconds=(Date.now()-started)/1000;
       let active=0;
       lines.forEach((line,i)=>{if(seconds>=line.time)active=i;});
@@ -31,6 +31,7 @@ if(t.syncedLyrics){
       }
       requestAnimationFrame(updateLyrics);
     }
+    song.style.display="block";
     requestAnimationFrame(updateLyrics);
   }else{
     lyricsBox.textContent=t.plainLyrics||"가사가 없습니다.";
