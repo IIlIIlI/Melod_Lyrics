@@ -16,11 +16,11 @@ if(t.syncedLyrics){
       div.textContent=line.text||"♪";
       lyricsBox.appendChild(div);
     });
-    const started=Date.now();
+    const params=new URLSearchParams(location.search);const initialPos=Math.max(0,Number(params.get("pos"))||0);const referenceTime=Number(params.get("at"))||Date.now()/1000;const isPaused=params.get("paused")==="1";const started=Date.now();
     let previousActive=-1;
     function updateLyrics(){
 
-      const seconds=(Date.now()-started)/1000;
+      const seconds=initialPos+(isPaused?0:Math.max(0,Date.now()/1000-referenceTime));
       document.getElementById("status").textContent="⏱ 가사 시간: "+seconds.toFixed(1)+"초";
       let active=0;
       lines.forEach((line,i)=>{if(seconds>=line.time)active=i;});
