@@ -2,41 +2,80 @@
 .sync-line.active{color:#fff;opacity:1;transform:scale(1.03)}
 .lyrics:has(.sync-line){padding:35vh 0 45vh}
 html{scroll-behavior:smooth}
-</style></head><body><div class="box"><div class="logo">🎵 MELOD</div><div class="sub">LRCLIB 가사 검색</div><div class="search"><input id="q" placeholder="곡 제목 또는 가수 입력"><button onclick="searchLyrics()">가사 검색</button></div><div id="status" class="status"></div><div id="error" class="error"></div><div id="song" class="song"><div id="title" class="title"></div><div id="artist" class="artist"></div><div id="lyrics" class="lyrics"></div></div></div><script>async function searchLyrics(){const q=document.getElementById("q").value.trim();const status=document.getElementById("status");const error=document.getElementById("error");const song=document.getElementById("song");if(!q){error.textContent="곡 제목이나 가수를 입력해주세요.";return}error.textContent="";song.style.display="none";status.textContent="🔍 가사를 검색하는 중...";try{const r=await fetch("https://lrclib.net/api/search?q="+encodeURIComponent(q));if(!r.ok)throw Error();let a=await r.json();if(Array.isArray(a)&&!a.length&&q.includes("아이유")){const retry=await fetch("https://lrclib.net/api/search?q="+encodeURIComponent(q.replace(/아이유/g,"IU")));if(retry.ok){const results=await retry.json();if(Array.isArray(results))a=results;}}if(!a.length){status.textContent="";error.textContent="❌ 가사를 찾을 수 없습니다.";return}const t=a[0];document.getElementById("title").textContent=t.trackName||"제목 없음";document.getElementById("artist").textContent=t.artistName||"가수 정보 없음";const lyricsBox=document.getElementById("lyrics");
-if(t.syncedLyrics){
-  const lines=t.syncedLyrics.split("\n").map(line=>{
-    const m=line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
-    return m?{time:Number(m[1])*60+Number(m[2]),text:m[3].trim()}:null;
-  }).filter(Boolean);
-  if(lines.length){
-    lyricsBox.innerHTML="";
-    lines.forEach(line=>{
-      const div=document.createElement("div");
-      div.className="sync-line";
-      div.textContent=line.text||"♪";
-      lyricsBox.appendChild(div);
-    });
-    const params=new URLSearchParams(location.search);const initialPos=Math.max(0,Number(params.get("pos"))||0);const referenceTime=Number(params.get("at"))||Date.now()/1000;const isPaused=params.get("paused")==="1";const started=Date.now();
-    let previousActive=-1;
-    function updateLyrics(){
-
-      const seconds=initialPos+(isPaused?0:Math.max(0,Date.now()/1000-referenceTime));
-      document.getElementById("status").textContent="⏱ 가사 시간: "+seconds.toFixed(1)+"초";
-      let active=0;
-      lines.forEach((line,i)=>{if(seconds>=line.time)active=i;});
-      const elements=lyricsBox.querySelectorAll(".sync-line");
-      elements.forEach((el,i)=>el.classList.toggle("active",i===active));
-      if(active!==previousActive){
-        elements[active]?.scrollIntoView({behavior:"smooth",block:"center"});
-        previousActive=active;
-      }
-      requestAnimationFrame(updateLyrics);
-    }
-    song.style.display="block";
-    requestAnimationFrame(updateLyrics);
-  }else{
-    lyricsBox.textContent=t.plainLyrics||"가사가 없습니다.";
+</style></head><body><div class="box"><div class="logo">🎵 MELOD</div><div class="sub">LRCLIB 가사 검색</div><div class="search"><input id="q" placeholder="곡 제목 또는 가수 입력"><button onclick="searchLyrics()">가사 검색</button></div><div id="status" class="status"></div><div id="error" class="error"></div><div id="song" class="song"><div id="title" class="title"></div><div id="artist" class="artist"></div><div id="lyrics" class="lyrics"></div></div></div><script>
+const p = new URLSearchParams(location.search);
+const initialQuery = [p.get('artist'),p.get('title')].filter(Boolean).join(' ');
+let requestVersion=0, animation=0;
+function norm(x){return String(x||'').normalize('NFKC').toLowerCase().replace(/아이유/g,'iu').replace(/[^\p{L}\p{N}]/gu,'');}
+function similarity(a,b){a=norm(a);b=norm(b);if(!a||!b)return 0;if(a===b)return 1;return a.includes(b)||b.includes(a)?Math.min(a.length,b.length)/Math.max(a.length,b.length):0;}
+function chooseLyrics(records,title,artist,duration){
+ const candidates=records.filter(t=>t&&typeof t==='object'&&(t.syncedLyrics||t.plainLyrics)&&(!title||similarity(t.trackName,title)>=0.5)&&(!artist||similarity(t.artistName,artist)>=0.8));
+ function rank(t){
+  const valid=typeof t.duration==='number'&&Number.isFinite(t.duration)&&t.duration>0;
+  const diff=duration>0&&valid?Math.abs(t.duration-duration):Infinity;
+  const bucket=duration>0?(diff<0.5?0:diff<=2?1:2):0;
+  return [bucket,-similarity(t.trackName,title),-similarity(t.artistName,artist),t.syncedLyrics?0:1,valid?diff:Infinity];
+ }
+ candidates.sort((a,b)=>{const x=rank(a),y=rank(b);for(let i=0;i<x.length;i++){if(x[i]<y[i])return -1;if(x[i]>y[i])return 1;}return 0;});
+ const item=candidates[0];
+ const matched=!!item&&(duration<=0||(typeof item.duration==='number'&&Math.abs(item.duration-duration)<=2));
+ return {item,matched};
+}
+async function getRecords(q){
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),10000);
+ try{const r=await fetch('https://lrclib.net/api/search?q='+encodeURIComponent(q),{signal:controller.signal});if(!r.ok)throw Error('search');const a=await r.json();return Array.isArray(a)?a:[];}finally{clearTimeout(timer);}
+}
+function parseLrc(text){
+ const rows=[];for(const raw of String(text||'').split('\n')){
+  const tags=[...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
+  const text=raw.replace(/\[\d+:\d+(?:\.\d+)?\]/g,'').trim();
+  for(const tag of tags)rows.push({time:Number(tag[1])*60+Number(tag[2]),text});
+ }return rows.sort((a,b)=>a.time-b.time);
+}
+async function searchLyrics(){
+ const q=document.getElementById('q').value.trim();
+ const status=document.getElementById('status'),error=document.getElementById('error'),song=document.getElementById('song'),box=document.getElementById('lyrics');
+ if(!q){error.textContent='곡 제목이나 가수를 입력해주세요.';return;}
+ const version=++requestVersion;cancelAnimationFrame(animation);
+ error.textContent='';song.style.display='none';status.textContent='🔍 곡명·가수·길이로 가사를 비교하는 중...';box.textContent='';
+ const fromTrack=norm(q)===norm(initialQuery);
+ const duration=fromTrack?Math.max(0,Number(p.get('duration'))||0):0;
+ const title=fromTrack?(p.get('title')||''):'';
+ const artist=fromTrack?(p.get('artist')||''):'';
+ try{
+  let records=await getRecords(q);
+  if(q.includes('아이유')){records=records.concat(await getRecords(q.replace(/아이유/g,'IU')));}
+  let selection=chooseLyrics(records,title,artist,duration);
+  if(fromTrack&&title&&(!selection.item||!selection.matched)){
+   records=records.concat(await getRecords(title));selection=chooseLyrics(records,title,artist,duration);
   }
-}else{
-  lyricsBox.textContent=t.plainLyrics||"가사가 없습니다.";
-}song.style.display="block"}catch(e){status.textContent="";error.textContent="❌ 가사를 불러오지 못했습니다."}}const p=new URLSearchParams(location.search);const q=[p.get("artist"),p.get("title")].filter(Boolean).join(" ");if(q){document.getElementById("q").value=q;searchLyrics();}</script></body></html>
+  if(version!==requestVersion)return;
+  const t=selection.item;
+  if(!t){status.textContent='';error.textContent='❌ 제목·가수에 맞는 가사를 찾을 수 없습니다.';return;}
+  document.getElementById('title').textContent=t.trackName||'제목 없음';
+  document.getElementById('artist').textContent=(t.artistName||'가수 정보 없음')+(duration>0?' · 재생 길이 '+Math.floor(duration/60)+':'+String(Math.floor(duration%60)).padStart(2,'0'):'');
+  const lines=parseLrc(t.syncedLyrics);
+  // A different-length recording is readable, but must not masquerade as synced.
+  if(lines.length&&selection.matched){
+   for(const line of lines){const div=document.createElement('div');div.className='sync-line';div.textContent=line.text||'♪';box.appendChild(div);}
+   const initialPos=Math.max(0,Number(p.get('pos'))||0),referenceTime=Number(p.get('at'))||Date.now()/1000,isPaused=p.get('paused')==='1';
+   let previousActive=-2;
+   function updateLyrics(){
+    if(version!==requestVersion)return;
+    const seconds=initialPos+(isPaused?0:Math.max(0,Date.now()/1000-referenceTime));
+    status.textContent=(duration>0?'✅ 곡 길이 일치(±2초) · ':'')+'⏱ 가사 시간: '+seconds.toFixed(1)+'초';
+    let active=-1;lines.forEach((line,i)=>{if(seconds>=line.time)active=i;});
+    const elements=box.querySelectorAll('.sync-line');elements.forEach((el,i)=>el.classList.toggle('active',i===active));
+    if(active!==previousActive){if(active>=0)elements[active]?.scrollIntoView({behavior:'smooth',block:'center'});previousActive=active;}
+    animation=requestAnimationFrame(updateLyrics);
+   }
+   song.style.display='block';animation=requestAnimationFrame(updateLyrics);
+  }else{
+   box.textContent=t.plainLyrics||lines.map(line=>line.text).join('\n')||'가사가 없습니다.';
+   status.textContent=duration>0&&!selection.matched?'⚠️ 같은 길이의 가사가 없어 일반 가사로 표시합니다.':'시간 정보가 없는 일반 가사입니다.';
+  }
+  song.style.display='block';
+ }catch(e){if(version!==requestVersion)return;status.textContent='';error.textContent='❌ 가사를 불러오지 못했습니다. 다시 시도해 주세요.';}
+}
+if(initialQuery){document.getElementById('q').value=initialQuery;searchLyrics();}
+</script></body></html>
